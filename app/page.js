@@ -11,7 +11,9 @@ export default function Home() {
   const [status, setStatus] = useState('');
   const [statusType, setStatusType] = useState('info');
   const [apiKeyConfigured, setApiKeyConfigured] = useState(false);
-  const [composites, setComposites] = useState([]); // Store all 10 composited images
+  const [composites, setComposites] = useState([]);
+  const [showRatioDialog, setShowRatioDialog] = useState(false);
+  const [pendingDownload, setPendingDownload] = useState(null); // {type: 'single'|'all', sceneIndex: number|null}
 
   const fileInputRef = useRef(null);
   const uploadAreaRef = useRef(null);
@@ -183,36 +185,133 @@ export default function Home() {
   };
 
   const downloadSingle = (sceneIndex) => {
-    if (!composites[sceneIndex]) return;
-
-    const link = document.createElement('a');
-    link.href = composites[sceneIndex];
-    link.download = `stk-pvt-ltd-${SCENES[sceneIndex].name.replace(/\s+/g, '-').toLowerCase()}-${Date.now()}.png`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    // Show ratio dialog instead of downloading immediately
+    setPendingDownload({ type: 'single', sceneIndex });
+    setShowRatioDialog(true);
   };
 
   const downloadAll = async () => {
-    if (composites.length === 0) return;
+    // Show ratio dialog for batch download
+    setPendingDownload({ type: 'all', sceneIndex: null });
+    setShowRatioDialog(true);
+  };
 
-    showStatus('Downloading all 10 versions...', 'info');
-    
-    // Download each image with small delay
-    for (let i = 0; i < composites.length; i++) {
-      setTimeout(() => {
+  const generateImageWithRatio = (imageDataUrl, ratio) => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+
+        if (ratio === '1:1') {
+          // Square format: 1200x1200 - Smart crop for best product view
+          canvas.width = 1200;
+          canvas.height = 1200;
+          
+          const imgRatio = img.width / img.height;
+          const canvasRatio = 1; // 1:1
+          
+          let sourceX, sourceY, sourceWidth, sourceHeight;
+          
+          if (imgRatio > canvasRatio) {
+            // Image is wider than square - crop sides
+            sourceHeight = img.height;
+            sourceWidth = sourceHeight * canvasRatio;
+            sourceX = (img.width - sourceWidth) / 2; // Center horizontally
+            sourceY = 0;
+          } else {
+            // Image is taller than square - crop top/bottom
+            sourceWidth = img.width;
+            sourceHeight = sourceWidth / canvasRatio;
+            sourceX = 0;
+            sourceY = (img.height - sourceHeight) / 2; // Center vertically
+          }
+          
+          ctx.drawImage(img, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, 1200, 1200);
+        } else if (ratio === '16:9') {
+          // Landscape format: 1920x1080 - Smart crop prioritizing upper content (face/neckline)
+          canvas.width = 1920;
+          canvas.height = 1080;
+          
+          const imgRatio = img.width / img.height;
+          const canvasRatio = 16 / 9;
+          
+          let sourceX, sourceY, sourceWidth, sourceHeight;
+          
+          if (imgRatio > canvasRatio) {
+            // Image is wider than 16:9 - crop left/right sides
+            sourceHeight = img.height;
+            sourceWidth = sourceHeight * canvasRatio;
+            sourceX = (img.width - sourceWidth) / 2; // Center horizontally
+            sourceY = 0;
+          } else {
+            // Image is taller than 16:9 - crop top/bottom but keep more from top
+            sourceWidth = img.width;
+            sourceHeight = sourceWidth / canvasRatio;
+            sourceX = 0;
+            // Bias toward top (35% from top, 65% from bottom) - shows face/neckline better
+            sourceY = (img.height - sourceHeight) * 0.25; // 25% from top, 75% from bottom
+          }
+          
+          ctx.drawImage(img, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, 1920, 1080);
+        } else if (ratio === 'original') {
+          // Original format: Keep original dimensions and aspect ratio
+          canvas.width = img.width;
+          canvas.height = img.height;
+          ctx.drawImage(img, 0, 0);
+        }
+
+        resolve(canvas.toDataURL('image/png', 1.0));
+      };
+      img.src = imageDataUrl;
+    });
+  };
+
+  const handleRatioSelect = async (ratio) => {
+    if (!pendingDownload) return;
+
+    setShowRatioDialog(false);
+    showStatus('Processing download...', 'info');
+
+    try {
+      if (pendingDownload.type === 'single') {
+        const imageUrl = composites[pendingDownload.sceneIndex];
+        const processedImage = await generateImageWithRatio(imageUrl, ratio);
+
         const link = document.createElement('a');
-        link.href = composites[i];
-        link.download = `stk-pvt-ltd-${i + 1}-${SCENES[i].name.replace(/\s+/g, '-').toLowerCase()}.png`;
+        link.href = processedImage;
+        link.download = `stk-pvt-ltd-${SCENES[pendingDownload.sceneIndex].name.replace(/\s+/g, '-').toLowerCase()}-${ratio.replace(':', '-')}-${Date.now()}.png`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-      }, i * 300);
+
+        showStatus(`✅ Downloaded ${ratio} format!`, 'success');
+      } else if (pendingDownload.type === 'all') {
+        showStatus(`Downloading all 10 in ${ratio} format...`, 'info');
+
+        for (let i = 0; i < composites.length; i++) {
+          setTimeout(async () => {
+            const imageUrl = composites[i];
+            const processedImage = await generateImageWithRatio(imageUrl, ratio);
+
+            const link = document.createElement('a');
+            link.href = processedImage;
+            link.download = `stk-pvt-ltd-${i + 1}-${SCENES[i].name.replace(/\s+/g, '-').toLowerCase()}-${ratio.replace(':', '-')}.png`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+          }, i * 500);
+        }
+
+        setTimeout(() => {
+          showStatus(`✅ All 10 images downloaded in ${ratio} format!`, 'success');
+        }, composites.length * 500);
+      }
+    } catch (error) {
+      showStatus('Error processing download: ' + error.message, 'error');
     }
 
-    setTimeout(() => {
-      showStatus('All 10 images downloaded! ✨', 'success');
-    }, composites.length * 300);
+    setPendingDownload(null);
   };
 
   const reset = () => {
@@ -318,10 +417,10 @@ export default function Home() {
             <div>
               <div className="bg-gray-50 rounded-lg border border-gray-200 p-6">
                 <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wide mb-4">Original Image</h2>
-                <div className="bg-white rounded border border-gray-200 flex flex-col items-center justify-center overflow-auto" style={{ minHeight: '400px', maxHeight: '400px' }}>
+                <div className="bg-white rounded border border-gray-200 flex flex-col items-center justify-center overflow-auto" style={{ minHeight: '400px', maxHeight: '550px' }}>
                   {originalImage ? (
-                    <div className="p-4">
-                      <img src={originalImage.src} alt="Original" className="max-w-full h-auto max-h-96" />
+                    <div className="p-4 flex items-center justify-center">
+                      <img src={originalImage.src} alt="Original" className="max-w-full h-auto" style={{ maxHeight: '520px' }} />
                     </div>
                   ) : (
                     <div className="text-center py-12">
@@ -346,7 +445,7 @@ export default function Home() {
                   onClick={downloadAll}
                   className="px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors text-sm"
                 >
-                  📥 Download All (10)
+                  📥 Download All (10) - Choose Format
                 </button>
                 <button
                   onClick={reset}
@@ -405,6 +504,54 @@ export default function Home() {
         )}
 
       </main>
+
+      {/* Ratio Selection Modal */}
+      {showRatioDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded border border-gray-200 max-w-sm w-full p-6">
+            <h3 className="text-base font-semibold text-gray-900 mb-6">Download Format</h3>
+
+            <div className="space-y-2">
+              {/* Square 1:1 */}
+              <button
+                onClick={() => handleRatioSelect('1:1')}
+                className="w-full text-left px-4 py-3 border border-gray-300 rounded hover:bg-gray-50 hover:border-gray-500 transition-colors"
+              >
+                <p className="font-medium text-sm text-gray-900">1:1 Square</p>
+                <p className="text-xs text-gray-600 mt-0.5">1200 × 1200 px</p>
+              </button>
+
+              {/* Landscape 16:9 */}
+              <button
+                onClick={() => handleRatioSelect('16:9')}
+                className="w-full text-left px-4 py-3 border border-gray-300 rounded hover:bg-gray-50 hover:border-gray-500 transition-colors"
+              >
+                <p className="font-medium text-sm text-gray-900">16:9 Landscape</p>
+                <p className="text-xs text-gray-600 mt-0.5">1920 × 1080 px</p>
+              </button>
+
+              {/* Original Ratio */}
+              <button
+                onClick={() => handleRatioSelect('original')}
+                className="w-full text-left px-4 py-3 border border-gray-300 rounded hover:bg-gray-50 hover:border-gray-500 transition-colors"
+              >
+                <p className="font-medium text-sm text-gray-900">Original Ratio</p>
+                <p className="text-xs text-gray-600 mt-0.5">Full image, original dimensions</p>
+              </button>
+            </div>
+
+            <button
+              onClick={() => {
+                setShowRatioDialog(false);
+                setPendingDownload(null);
+              }}
+              className="w-full mt-6 py-2 px-4 text-gray-700 border border-gray-300 rounded text-sm hover:bg-gray-50 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Footer */}
       <footer className="border-t border-gray-200 mt-12">
