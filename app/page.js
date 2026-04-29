@@ -382,7 +382,7 @@ export default function Home() {
                   className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer hover:border-gray-400 transition-colors"
                 >
                   <div className="text-4xl mb-2">📸</div>
-                  <p className="text-sm text-gray-600 font-medium">Drag & drop your kurti image<br /></p>
+                  <p className="text-sm text-gray-600 font-medium"><strong>Drag & drop your image</strong><br />to remove background here</p>
                   <p className="text-xs text-gray-500 mt-2">or click to browse (max 10MB)</p>
                 </div>
                 <input
