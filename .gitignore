@@ -1,0 +1,43 @@
+# Environment variables (keep API key secret!)
+.env
+.env.local
+.env.*.local
+
+# Dependencies
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# IDE
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Logs
+logs/
+*.log
+
+# Temp files
+temp/
+tmp/
+dist/
+build/
+
+# Next.js
+.next/
+out/
+*.tsbuildinfo
+.turbo/
+
+# Old Express files (migrated to Next.js)
+server.js
+index.html
+app.js
+
