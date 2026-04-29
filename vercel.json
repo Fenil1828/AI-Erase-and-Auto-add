@@ -1,27 +1,4 @@
 {
-  "name": "stk-pvt-ltd-background-remover",
-  "version": 2,
-  "builds": [
-    {
-      "src": "package.json",
-      "use": "@vercel/next"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "/",
-      "methods": ["GET", "HEAD", "OPTIONS"]
-    },
-    {
-      "src": "/api/(.*)",
-      "dest": "/api/",
-      "methods": ["GET", "POST", "PUT", "DELETE", "PATCH"]
-    }
-  ],
-  "env": {
-    "REMOVE_BG_API_KEY": "@remove_bg_api_key"
-  },
   "buildCommand": "next build",
   "outputDirectory": ".next"
 }
